@@ -1,0 +1,36 @@
+{
+  "name": "microloan-dapp",
+  "version": "1.0.0",
+  "description": "A decentralized microloan application like Splitwise for group loans",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "node": "hardhat node",
+    "deploy": "hardhat run scripts/deploy.js --network localhost",
+    "distribute": "hardhat run scripts/distribute-tokens.js --network localhost"
+  },
+  "dependencies": {
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "ethers": "^6.8.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.0",
+    "@openzeppelin/contracts": "^5.0.0"
+  },
+  "keywords": [
+    "blockchain",
+    "dapp",
+    "microloan",
+    "hardhat",
+    "nextjs"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
