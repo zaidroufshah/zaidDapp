@@ -176,7 +176,7 @@ The DApp will be available at `http://localhost:3000`
    - Network Name: `Hardhat Local`
    - RPC URL: `http://127.0.0.1:8545`
    - Chain ID: `31337`
-   - Currency Symbol: `ETH`
+   - Currency Symbol: `HETH`
 
 3. **Import Test Account**:
    - Copy a private key from the Hardhat node terminal
@@ -184,7 +184,7 @@ The DApp will be available at `http://localhost:3000`
 
 4. **Add HETH Token** to MetaMask:
    - Copy the HETH token address from deploy step
-   - In MetaMask: Import tokens → Custom token → Paste address
+   - In MetaMask: Token tab → Import tokens → Custom token → Paste address
 
 ## 📖 How to Use
 
@@ -416,4 +416,4 @@ This project is licensed under the MIT License. See `LICENSE` file for details.
 
 **Happy Lending! 🚀**
 
-*Built with ❤️ for the decentralized finance community*
+*Built with ❤️ for the decentralized finance community by Yasir Mohamed Abdinur & Zaid Rouf Shah*
