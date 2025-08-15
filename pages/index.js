@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
+import { useAuth } from "../contexts/AuthContext";
+import Auth from "../components/Auth";
+import { FiUser, FiLogOut, FiLink } from 'react-icons/fi';
 
 // Contract ABIs and addresses (will be populated after deployment)
 let HETH_ABI = [];
@@ -19,6 +22,8 @@ try {
 }
 
 export default function Home() {
+  const { user, loading: authLoading, signOut, linkWallet } = useAuth();
+  
   // State variables
   const [account, setAccount] = useState("");
   const [provider, setProvider] = useState(null);
@@ -29,6 +34,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ type: "", message: "" });
   const [chainId, setChainId] = useState(null);
+  const [walletLinked, setWalletLinked] = useState(false);
 
   // Form states
   const [borrowerAddresses, setBorrowerAddresses] = useState("");
@@ -36,18 +42,7 @@ export default function Home() {
   const [repayLoanId, setRepayLoanId] = useState("");
   const [repayAmount, setRepayAmount] = useState("");
 
-  // Initialize provider and contracts
-  useEffect(() => {
-    initializeProvider();
-  }, []);
-
-  // Load loans when contracts are ready
-  useEffect(() => {
-    if (microLoanContract && account) {
-      loadLoans();
-      loadHethBalance();
-    }
-  }, [microLoanContract, account]);
+  // ---------------- FUNCTIONS (defined BEFORE effects & early returns) ----------------
 
   // Initialize Web3 provider
   const initializeProvider = async () => {
@@ -127,6 +122,7 @@ export default function Home() {
       setAccount("");
       setHethBalance("0");
       setLoans([]);
+      setWalletLinked(false);
       setStatus({
         type: "info",
         message: "Please connect your MetaMask wallet",
@@ -142,6 +138,9 @@ export default function Home() {
         await loadLoans();
         await loadHethBalance();
       }
+      // Check if this wallet is linked to the user
+      const userWallet = user?.user_metadata?.wallet_address;
+      setWalletLinked(userWallet && userWallet.toLowerCase() === accounts[0].toLowerCase());
     }
   };
 
@@ -172,6 +171,13 @@ export default function Home() {
             message: "Please switch to Hardhat Local Network (localhost:8545)",
           });
         }
+
+        // Check if this wallet is already linked to the user
+        const userWallet = user?.user_metadata?.wallet_address;
+        if (userWallet && userWallet.toLowerCase() === accounts[0].toLowerCase()) {
+          setWalletLinked(true);
+          setStatus({ type: "success", message: "Wallet connected and linked to your account!" });
+        }
       }
     } catch (error) {
       console.error("Error connecting wallet:", error);
@@ -185,11 +191,36 @@ export default function Home() {
     }
   };
 
+  // Link wallet to user account
+  const handleLinkWallet = async () => {
+    if (!account) {
+      setStatus({ type: "error", message: "Please connect your wallet first" });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const result = await linkWallet(account);
+      
+      if (result.error) {
+        setStatus({ type: "error", message: "Failed to link wallet: " + result.error.message });
+      } else {
+        setWalletLinked(true);
+        setStatus({ type: "success", message: "Wallet linked to your account successfully!" });
+      }
+    } catch (error) {
+      console.error("Error linking wallet:", error);
+      setStatus({ type: "error", message: "Failed to link wallet" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Switch account function
   const switchAccount = async () => {
     try {
       // Request to connect accounts, which will show the account selection dialog
-      const accounts = await window.ethereum.request({
+      await window.ethereum.request({
         method: "wallet_requestPermissions",
         params: [{ eth_accounts: {} }],
       });
@@ -199,6 +230,26 @@ export default function Home() {
     } catch (error) {
       console.error("Error switching account:", error);
       setStatus({ type: "error", message: "Failed to switch account" });
+    }
+  };
+
+  // Sign out function
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      // Reset all state
+      setAccount("");
+      setHethBalance("0");
+      setLoans([]);
+      setWalletLinked(false);
+      setBorrowerAddresses("");
+      setLoanAmount("");
+      setRepayLoanId("");
+      setRepayAmount("");
+      setStatus({ type: "info", message: "Signed out successfully" });
+    } catch (error) {
+      console.error("Error signing out:", error);
+      setStatus({ type: "error", message: "Failed to sign out" });
     }
   };
 
@@ -313,6 +364,14 @@ export default function Home() {
         type: "error",
         message:
           "Please connect your wallet first and ensure contracts are deployed",
+      });
+      return;
+    }
+
+    if (!walletLinked) {
+      setStatus({
+        type: "error",
+        message: "Please link your wallet to your account first",
       });
       return;
     }
@@ -484,6 +543,14 @@ export default function Home() {
       return;
     }
 
+    if (!walletLinked) {
+      setStatus({
+        type: "error",
+        message: "Please link your wallet to your account first",
+      });
+      return;
+    }
+
     if (!repayLoanId || !repayAmount) {
       setStatus({ type: "error", message: "Please fill in all fields" });
       return;
@@ -632,24 +699,101 @@ export default function Home() {
     });
   };
 
+  // ---------------- EFFECTS (declared AFTER functions, BEFORE early returns) ----------------
+
+  // Initialize provider and contracts
+  useEffect(() => {
+    initializeProvider();
+    // Optional: cleanup listeners on unmount
+    return () => {
+      if (typeof window !== "undefined" && window.ethereum) {
+        window.ethereum.removeListener?.("accountsChanged", handleAccountsChanged);
+        window.ethereum.removeListener?.("chainChanged", handleChainChanged);
+      }
+    };
+  }, []);
+
+  // Load loans when contracts are ready
+  useEffect(() => {
+    if (microLoanContract && account) {
+      loadLoans();
+      loadHethBalance();
+    }
+  }, [microLoanContract, account]);
+
+  // Check if wallet is already linked
+  useEffect(() => {
+    if (user && account) {
+      const userWallet = user.user_metadata?.wallet_address;
+      if (userWallet && userWallet.toLowerCase() === account.toLowerCase()) {
+        setWalletLinked(true);
+      } else {
+        setWalletLinked(false);
+      }
+    }
+  }, [user, account]);
+
+  // ----------- EARLY RETURNS (AFTER hooks to avoid conditional hooks) -----------
+  if (authLoading) {
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      }}>
+        <div style={{ color: 'white', fontSize: '18px' }}>Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Auth />;
+  }
+
+  // ---------------- UI ----------------
   return (
     <div className="container">
       {/* Header */}
       <header className="text-center mb-4">
-        <h1
-          style={{
-            fontSize: "2.5rem",
-            fontWeight: "bold",
-            color: "white",
-            marginBottom: "1rem",
-            textShadow: "2px 2px 4px rgba(0,0,0,0.3)",
-          }}
-        >
-          🏦 MicroLoan DApp
-        </h1>
-        <p style={{ color: "white", fontSize: "1.1rem", opacity: 0.9 }}>
-          Decentralized Group Microloans powered by Blockchain
-        </p>
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h1
+              style={{
+                fontSize: "2.5rem",
+                fontWeight: "bold",
+                color: "white",
+                marginBottom: "1rem",
+                textShadow: "2px 2px 4px rgba(0,0,0,0.3)",
+              }}
+            >
+              🏦 MicroLoan DApp
+            </h1>
+            <p style={{ color: "white", fontSize: "1.1rem", opacity: 0.9 }}>
+              Decentralized Group Microloans powered by Blockchain
+            </p>
+          </div>
+          
+          {/* User Info & Sign Out */}
+          <div className="user-header">
+            <div className="user-info">
+              <FiUser className="user-icon" />
+              <div>
+                <p className="user-name">{user.user_metadata?.full_name || user.email}</p>
+                <p className="user-email">{user.email}</p>
+              </div>
+            </div>
+            <button
+              className="btn btn-secondary sign-out-btn"
+              onClick={handleSignOut}
+              title="Sign Out"
+            >
+              <FiLogOut />
+            </button>
+          </div>
+        </div>
+        
         {chainId && (
           <p style={{ color: "white", fontSize: "0.9rem", opacity: 0.8 }}>
             Network: {chainId === 31337n ? "Hardhat Local" : `Chain ID: ${chainId}`}
@@ -705,8 +849,25 @@ export default function Home() {
               <p>
                 <strong>Network:</strong> {chainId === 31337n ? "✅ Hardhat Local" : "❌ Wrong Network"}
               </p>
+              <p>
+                <strong>Account Status:</strong> {walletLinked ? (
+                  <span style={{ color: "#28a745" }}>✅ Linked to your account</span>
+                ) : (
+                  <span style={{ color: "#ffc107" }}>⚠️ Not linked</span>
+                )}
+              </p>
             </div>
             <div className="flex gap-2">
+              {!walletLinked && (
+                <button
+                  className="btn btn-success"
+                  onClick={handleLinkWallet}
+                  disabled={loading}
+                >
+                  <FiLink className="mr-1" />
+                  Link Wallet
+                </button>
+              )}
               <button
                 className="btn btn-secondary"
                 onClick={switchAccount}
@@ -740,7 +901,7 @@ export default function Home() {
               value={borrowerAddresses}
               onChange={(e) => setBorrowerAddresses(e.target.value)}
               placeholder="0x70997970C51812dc3A010C7d01b50e0d17dc79C8, 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
-              disabled={!account || loading}
+              disabled={!account || loading || !walletLinked}
             />
           </div>
           <div className="form-group">
@@ -753,7 +914,7 @@ export default function Home() {
               placeholder="100"
               step="0.01"
               min="0"
-              disabled={!account || loading}
+              disabled={!account || loading || !walletLinked}
             />
             <small style={{ color: "#666", fontSize: "0.8rem" }}>
               This amount will be split equally among all borrowers
@@ -762,10 +923,15 @@ export default function Home() {
           <button
             type="submit"
             className="btn btn-success"
-            disabled={!account || loading || chainId !== 31337n}
+            disabled={!account || loading || chainId !== 31337n || !walletLinked}
           >
             {loading ? <span className="spinner"></span> : "🚀 Create Loan"}
           </button>
+          {!walletLinked && account && (
+            <small style={{ color: "#dc3545", fontSize: "0.8rem", display: "block", marginTop: "8px" }}>
+              Please link your wallet to your account to create loans
+            </small>
+          )}
         </form>
       </div>
 
@@ -782,7 +948,7 @@ export default function Home() {
               onChange={(e) => handleRepayLoanIdChange(e.target.value)}
               placeholder="1"
               min="1"
-              disabled={!account || loading}
+              disabled={!account || loading || !walletLinked}
             />
           </div>
           <div className="form-group">
@@ -795,7 +961,7 @@ export default function Home() {
               placeholder="Auto-filled when you enter Loan ID"
               step="0.000000000000000001"
               min="0"
-              disabled={!account || loading}
+              disabled={!account || loading || !walletLinked}
               readOnly
             />
             <small style={{ color: "#666", fontSize: "0.8rem" }}>
@@ -805,10 +971,15 @@ export default function Home() {
           <button
             type="submit"
             className="btn btn-success"
-            disabled={!account || loading || !repayLoanId || !repayAmount}
+            disabled={!account || loading || !repayLoanId || !repayAmount || !walletLinked}
           >
             {loading ? <span className="spinner"></span> : "💸 Repay Loan"}
           </button>
+          {!walletLinked && account && (
+            <small style={{ color: "#dc3545", fontSize: "0.8rem", display: "block", marginTop: "8px" }}>
+              Please link your wallet to your account to repay loans
+            </small>
+          )}
         </form>
       </div>
 
@@ -869,14 +1040,20 @@ export default function Home() {
                             <span className="status error">
                               ⏳ You owe {loan.shareAmount} HETH
                             </span>
-                            <button
-                              className="btn btn-success mt-2"
-                              onClick={() => quickRepay(loan.id, loan.shareAmount)}
-                              disabled={loading}
-                              style={{ width: "100%", fontSize: "0.9rem" }}
-                            >
-                              💳 Quick Repay
-                            </button>
+                            {walletLinked ? (
+                              <button
+                                className="btn btn-success mt-2"
+                                onClick={() => quickRepay(loan.id, loan.shareAmount)}
+                                disabled={loading}
+                                style={{ width: "100%", fontSize: "0.9rem" }}
+                              >
+                                💳 Quick Repay
+                              </button>
+                            ) : (
+                              <small style={{ color: "#dc3545", fontSize: "0.8rem", display: "block", marginTop: "8px" }}>
+                                Link your wallet to repay
+                              </small>
+                            )}
                           </div>
                         )}
                       </div>
@@ -909,10 +1086,13 @@ export default function Home() {
       {/* Footer */}
       <footer className="text-center mt-4 mb-4">
         <p style={{ color: "white", opacity: 0.8 }}>
-          Built with ❤️ using Hardhat + Next.js + Ethers.js
+          Built with ❤️ using Hardhat + Next.js + Ethers.js + Supabase
         </p>
         <p style={{ color: "white", opacity: 0.6, fontSize: "0.8rem" }}>
           Make sure to connect to Hardhat Local Network (localhost:8545)
+        </p>
+        <p style={{ color: "white", opacity: 0.6, fontSize: "0.8rem" }}>
+          Logged in as: {user.user_metadata?.full_name || user.email}
         </p>
       </footer>
     </div>
